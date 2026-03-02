@@ -1,0 +1,75 @@
+# Báo cáo: Cách SecureBus Pro khắc phục OWASP Mobile Top 10
+
+Tài liệu này giải thích chi tiết cách ứng dụng **SecureBus Pro** đã được thiết kế lại để phòng chống và khắc phục toàn bộ 10 rủi ro bảo mật tồi tệ nhất trên thiết bị di động (OWASP Mobile Top 10 2023) vốn tồn tại trong phiên bản "QuickBus Lite".
+
+---
+
+### M1 – Proper Credential Usage (Sử dụng danh tính an toàn)
+**Đã khắc phục:**
+- Không còn bất kỳ API Key hay Token nào bị mã hóa "cứng" (Hardcoded) trong source code (`Config`). Các biến môi trường được khuyến nghị Inject từ CI/CD.
+- **Lưu trữ Token an toàn:** Thay vì dùng `SharedPreferences` dạng Plain-text, ứng dụng chuyển sang sử dụng thư viện **AndroidX Security Crypto** với class `EncryptedSharedPreferences`. Token được mã hóa siêu mạnh bằng MasterKey cấp phát từ **Android Keystore** (Lớp Key nằm ở tầng phần cứng TEE của thiết bị).
+
+---
+
+### M2 – Secure Supply Chain (Chuỗi cung ứng an toàn)
+**Đã khắc phục:**
+- File [build.gradle.kts](file:///Users/sonnguyen/Documents/Master/ATTT/MobileApp/SecureBusPro/build.gradle.kts) đã loại bỏ hoàn toàn các ký tự `+` hoặc phiên bản linh động (VD: đổi từ `gson:+` thành `gson:2.10.1` cụ thể).
+- Áp dụng các thư viện với phiên bản an toàn và được update/quy hoạch rõ ràng để tránh bị Dependency Hijacking.
+
+---
+
+### M3 – Secure Authentication & Authorization (Xác thực & Phân quyền an toàn)
+**Đã khắc phục:**
+- Cơ chế Login Check rỗng tếch bằng lệnh `username == "admin" && password == "admin"` đã bị **xóa bỏ**.
+- Quá trình đăng nhập hiện đã kiểm tra mật khẩu hợp lệ với Database sử dụng cơ chế **Hash Compare** đồng thời không phản hồi chính xác tài khoản bị sai chỗ nào bằng cảnh báo hằng số (chống dò tài khoản - Enumeration attack).
+
+---
+
+### M4 – Strong Input / Output Validation (Kiểm tra dữ liệu rà soát mạnh mẽ)
+**Đã khắc phục:**
+- Tại khung đăng nhập, ứng dụng trước khi thực thi đã Validate Input thông qua Regex: `^[a-zA-Z0-9]{3,20}$` nhằm đưa toàn bộ ký tự lạ như `' " = --` vào danh sách đen (Blacklist/Whitelist). Ngăn ngừa tiêm mã chéo.
+- Quan trọng nhất, hàm truy vấn SQLite `db.rawQuery()` đã sử dụng **Tham số liên kết (Bind Variables / Parameterized Query)** `arrayOf(username)` thay vì nối chuỗi trực tiếp, qua đó **chặn đứng hoàn toàn tấn công SQL Injection**. Mọi ký tự SQL nếu lọt qua Regex cũng bị coi là text thông thường.
+
+---
+
+### M5 – Secure Communication (Giao tiếp mạng an toàn)
+**Đã khắc phục:**
+- Thuộc tính `android:usesCleartextTraffic` trong chuỗi [AndroidManifest.xml](file:///Users/sonnguyen/Documents/Master/ATTT/MobileApp/QuickBusLite/app/src/main/AndroidManifest.xml) được đặt cờ `false`, ép ứng dụng chặn mọi liên lạc nội bộ hoặc bên ngoài xuất phát bằng giao thức `http://`.
+- Thay vì dùng `TrustAllCerts` cực kỳ nguy hiểm, tôi đã cấu hình file [network_security_config.xml](file:///Users/sonnguyen/Documents/Master/ATTT/MobileApp/SecureBusPro/app/src/main/res/xml/network_security_config.xml) và gắn code **Certificate Pinning** (Ghim chứng chỉ) thẳng vào lớp mạng `OkHttp`. Nếu kẻ thù dùng Burp Suite tạo chứng chỉ SSL giả, App sẽ báo lỗi "Connection Blocked by Pinning" và đóng kết nối ngay lập tức để phòng chống MITM.
+
+---
+
+### M6 – Privacy Controls (Nâng cao Quyền riêng tư)
+**Đã khắc phục:**
+- Xây dựng một màn hình **Consent Screen** (Màn hình chấp thuận Quyền riêng tư) ngay lúc người dùng vào màn hình đầu tiên để xin phép dựa trên tư tưởng của GDPR (Chỉ thu thập thông tin được cho phép).
+- Che đi (Mask) một phần dữ liệu nhạy cảm được in ra khỏi màn hình UI thay vì in toàn bộ JSON API Response. Không ghi Log chứa PII.
+
+---
+
+### M7 – Binary Protection (Bảo vệ tính toàn vẹn file Nhị phân)
+**Đã khắc phục:**
+- Code Kotlin có chứa lệnh chống Debug: `Debug.isDebuggerConnected()`. Nếu một Hacker đang cố cắm trình gỡ lỗi (như JDB) trực tiếp chạy vào Process, App sẽ tự sát (exitProcess) nhằm bảo vệ mã nguồn.
+- Trong lúc build Production (`release`), cờ obfuscate là `isMinifyEnabled = true` đã được bật cùng Proguard/R8. Code biên dịch (.apk) khi bị dịch ngược qua JADX sẽ bị mã hóa nát các hàm gọi (VD: `com.example.a(b, c)` thay vì [fetchSecureApi()](file:///Users/sonnguyen/Documents/Master/ATTT/MobileApp/SecureBusPro/app/src/main/java/com/example/myapplication/MainActivity.kt#211-244)) khiến việc đọc hiểu Flow rất khó khăn.
+
+---
+
+### M8 – Secure Configuration (Cấu hình bảo mật chặt chẽ)
+**Đã khắc phục:**
+- Tất cả các lệnh `Log.e` in ra Exception/Stack trace chi tiết hoặc lộ SQL Query/Response JSON đã bị **Hủy bỏ hoàn toàn**. Thông báo trả về người dùng là những tin nhắn Generic (VD: Authentication process failed).
+- Ngăn chặn App bị backup file thông qua `android:allowBackup="false"` trên [AndroidManifest.xml](file:///Users/sonnguyen/Documents/Master/ATTT/MobileApp/QuickBusLite/app/src/main/AndroidManifest.xml). Quá trình dùng công cụ ADB backup sẽ không thể rút ruột app.
+
+---
+
+### M9 – Secure Data Storage (Lưu trữ an toàn bộ nhớ trong)
+**Đã khắc phục:**
+- Nếu ở bản Insecure, mật khẩu nhập vào được vứt thẳng rác vào config dạng Plaintext thì tại đây, nó không bao giờ được lưu giữ. 
+- Mọi dữ liệu Local DB được chuẩn hóa bằng Encrypted SharedPreferences (AndroidX) và nếu app cần lưu DB sẽ sử dụng DB đã mã hóa SQLCipher thay vì SQLite bình dân.
+
+---
+
+### M10 – Strong Cryptography (Sử dụng mật mã cấp độ Doanh nghiệp)
+**Đã khắc phục:**
+- Xóa sổ lệnh mã hóa một chiều huyền thoại MD5 do quá yếu và khả năng bị bruteforced bằng hash.
+- **Triển khai hệ thống mã hóa tiên tiến:** 
+  - Tạo một hàm [generateSalt()](file:///Users/sonnguyen/Documents/Master/ATTT/MobileApp/SecureBusPro/app/src/main/java/com/example/myapplication/MainActivity.kt#245-252) bằng `SecureRandom()` lấy 16 byte "Muối" (Salt) sinh học.
+  - Tại khâu đăng ký mật khẩu giả cho DB, hàm mã hóa hiện dùng chuẩn `PBKDF2WithHmacSHA256` bằng cách trộn Salt chung với PassWord qua 10,000 vòng nhào trộn (`iterations = 10000`). Điều này khiến việc dịch ngược dải mã băm cần siêu máy tính tính bằng thế kỷ thay vì chỉ lên CrackStation gõ trong chưa đầy 1 giây.

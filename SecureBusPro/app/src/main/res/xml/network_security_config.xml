@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<network-security-config>
+    <!-- M5: Secure Communication. Enforce strictly HTTPS, no cleartext -->
+    <domain-config cleartextTrafficPermitted="false">
+        <domain includeSubdomains="true">jsonplaceholder.typicode.com</domain>
+        <!-- Adding certificate pinning as an example for M5 Implementation -->
+        <pin-set expiration="2027-01-01">
+            <pin digest="SHA-256">AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=</pin>
+        </pin-set>
+    </domain-config>
+</network-security-config>

@@ -1,0 +1,99 @@
+# Hướng dẫn Demo 10 lỗ hổng OWASP Mobile Top 10 trên QuickBus Lite
+
+Tài liệu này cung cấp các kịch bản từng bước để Pentester hoặc Security Engineer có thể trình diễn (demo) các lỗ hổng đã được cài cắm trong ứng dụng **QuickBus Lite**.
+
+---
+
+### M1 – Improper Credential Usage (Sử dụng danh tính lỏng lẻo)
+**Cách Demo:**
+1. **Dịch ngược code để lấy Hardcoded Key:** Sử dụng công cụ `JADX-GUI` để mở file APK. Đi tìm class `Config` (nằm ở `com.example.myapplication.Config`), bạn sẽ thấy `API_SECRET` và JWT token `ADMIN_TOKEN` được lưu thẳng dạng plain-text trong source code.
+2. **Kiểm tra SharedPreferences:**
+   - Cài đặt app lên máy ảo đã Root (hoặc dùng adb với app debuggable).
+   - Đăng nhập thành công bằng tài khoản `admin`.
+   - Chạy lệnh: `adb shell` -> [su](file:///Users/sonnguyen/Documents/Master/ATTT/MobileApp/QuickBusLite/app/src/main/java/com/example/myapplication/MainActivity.kt#219-220) -> `cat /data/data/com.example.myapplication/shared_prefs/app_prefs.xml`
+   - Bạn sẽ thấy token không có expiry (JWT) được lưu vĩnh viễn trong máy, bất kỳ mã độc nào có quyền root cũng có thể lấy được.
+
+---
+
+### M2 – Inadequate Supply Chain Security (Chuỗi cung ứng không an toàn)
+**Cách Demo:**
+1. Mở file [build.gradle.kts](file:///Users/sonnguyen/Documents/Master/ATTT/MobileApp/QuickBusLite/build.gradle.kts) của module `app`.
+2. Chỉ ra dòng: `implementation("com.google.code.gson:gson:+")` cho người xem.
+3. Giải thích: Việc sử dụng version `+` thay vì lock chết ở một phiên bản cố định (hoặc không dùng file `gradle.lockfile`) khiến mỗi lần build, app sẽ tự động kéo version mới nhất của `gson`. Nếu repo bị trúng độc (Supply Chain attack) bằng bản cập nhật chứa mã độc, ứng dụng lập tức bị lây nhiễm ở phiên bản compile kế tiếp.
+
+---
+
+### M3 – Insecure Authentication & Authorization (Xác thực & Phân quyền không an toàn)
+**Cách Demo:**
+1. Mở ứng dụng lên.
+2. Tại màn hình Login, nhập Username là: `admin` và Password là `admin` rồi ấn **Login**.
+3. Ứng dụng lập tức cho phép đăng nhập thành công.
+4. **Giải thích:** Hệ thống không gọi API xuống server để xác thực quyền (Server-side validation) mà sử dụng một lệnh `if (username == "admin" && password == "admin")` được hardcode ngay ở UI layer. Việc Bypass Role Check cực kỳ dễ dàng.
+
+---
+
+### M4 – Insufficient Input / Output Validation (Thiếu rà soát input/output)
+**Cách Demo (SQL Injection):**
+1. Ứng dụng vừa được tôi chèn một user giả định tên `user1` vào SQLite để phục vụ kịch bản này.
+2. Tại màn hình Login, thay vì nhập đúng mật khẩu, ta sẽ dùng **SQL Injection**.
+3. Nhập Username: `user1' -- ` (có một khoảng trắng ở cuối).
+4. Password: Bỏ trống hoặc gõ bừa.
+5. Bấm **Login** -> Bạn sẽ thấy màn hình đăng nhập bị bypass thành công với dòng chữ "Login Success from Database!".
+6. **Giải thích:** Câu Query sẽ trở thành: `SELECT * FROM users WHERE username = 'user1' -- ' AND password = '...'`. Dấu `--` trong SQLite là comment, nên nó đã vô hiệu hóa hoàn toàn vòng kiểm tra mật khẩu phía sau. (Lưu ý, nếu nhập cú pháp sai như lỗi bạn gửi ở hình trên, câu SQL sẽ văng màn hình lỗi - điều này cũng sẽ được demo ở mục M8).
+
+---
+
+### M5 – Insecure Communication (Giao tiếp mạng không an toàn)
+**Cách Demo:**
+1. Thiết lập máy ảo Android đi qua proxy của phần mềm `Burp Suite` hoặc `Charles Proxy`.
+2. Mở ứng dụng, bấm nút **Login** (bằng tài khoản admin) để vào Dashboard.
+3. Tại Dashboard, bấm nút **Fetch Data via HTTP**.
+4. Quay lại màn hình Burp Suite, bạn sẽ thấy Request bắt được toàn bộ dữ liệu đi qua mà không bị mã hóa (do dùng giao thức `http://` thay vì `https://`).
+5. Kể cả đối với giao thức HTTPS, ứng dụng đã dùng một Custom `TrustManager` cấp quyền "Trust All Certificates", do vậy việc làm giả chứng chỉ bằng Burp Suite sẽ không bị ứng dụng ném ngoại lệ SSL Pinning.
+
+---
+
+### M6 – Inadequate Privacy Controls (Kiểm soát quyền riêng tư yếu)
+**Cách Demo:**
+1. Trong file code, ta thiết lập một trường `pii_email` (thông tin PII của hệ thống).
+2. Xâm nhập vào máy điện thoại (thông qua ADB, giả sử máy đã mất thiết bị phòng vệ):
+   - `adb shell`
+   - `run-as com.example.myapplication`
+   - `sqlite3 databases/QuickBusLite.db`
+   - `SELECT * FROM users;`
+3. Bạn sẽ đọc được trực tiếp Email và dữ liệu người dùng (`user1@test.com`) hiển thị trần trụi dưới dạng plain-text vì Database (SQLite) không được mã hóa (VD: không có SQLCipher).
+
+---
+
+### M7 – Insufficient Binary Protections (Bảo vệ file nhị phân yếu kém)
+**Cách Demo:**
+1. Xuất file APK từ dự án Android.
+2. Kéo file APK đó vào các dịch vụ Web decompile (như `javadecompilers.com`) hoặc dùng `JADX`.
+3. Bạn mở ra và sẽ thấy cấu trúc mã nguồn y hệt như code ban đầu. Tên biến, tên class ([MainActivity](file:///Users/sonnguyen/Documents/Master/ATTT/MobileApp/QuickBusLite/app/src/main/java/com/example/myapplication/MainActivity.kt#38-67), `Config`, [fetchInsecureApi](file:///Users/sonnguyen/Documents/Master/ATTT/MobileApp/QuickBusLite/app/src/main/java/com/example/myapplication/MainActivity.kt#211-255), URL của API) hiện rõ không bị đổi tên lộn xộn (như thành biến a, b, c).
+4. **Nguyên do:** Do cờ `isMinifyEnabled = false` đã vô hiệu hóa R8 Obfuscator. Đồng thời, app hoàn toàn có thể chạy trên trình giả lập hoặc máy Root mà không bị Force Close do không kiểm tra trạng thái environment.
+
+---
+
+### M8 – Security Misconfiguration (Cấu hình bảo mật sai)
+**Cách Demo:**
+1. **Lỗi 1 (Lộ thông tin qua Error Message):** Ở màn Login, nhập username là dấu `'` rồi bấm **Login**. Giao diện ứng dụng sụp đổ và xổ thẳng đoạn báo lỗi `android.database.sqlite.SQLiteException: near...` lên mặt UI. Điều này lộ cấu trúc câu truy vấn ra ngoài.
+2. **Lỗi 2 (Full Logging):** Mở cửa sổ **Logcat** trong Android Studio hoặc dùng `adb logcat | grep "SECURITY"`. Start app, bạn sẽ thấy dòng Log in chình ình `SECURITY_MISCONFIG: QuickBusLite App Started... API_SECRET:...`.
+3. Sau khi bấm Fetch API ở màn dashboard, logcat cũng in lại toàn bộ Response JSON gây nguy cơ lộ luồng dữ liệu thông tin bảo mật.
+
+---
+
+### M9 – Insecure Data Storage (Lưu trữ dữ liệu kém an toàn)
+**Cách Demo:**
+1. Tiến hành login bằng tài khoản `admin` / `admin`.
+2. Truy cập vào bộ nhớ trong của ứng dụng (Yêu cầu Root / hoặc dùng tính năng Device File Explorer trong Android Studio với app được cắm cáp).
+3. Mở file tại `/data/data/com.example.myapplication/shared_prefs/app_prefs.xml`
+4. Cặp giá trị `<string name="saved_password">admin</string>` xuất hiện. Passwords được Save-Plain-Text thay vì phải thông qua Android `EncryptedSharedPreferences` / `Keystore`.
+
+---
+
+### M10 – Insufficient Cryptography (Sử dụng mật mã không đủ mạnh)
+**Cách Demo:**
+1. Như kịch bản M6, ta dump hệ thống Database `QuickBusLite.db` ra.
+2. Cột `password` của người dùng `user1` là chuỗi băm: `482c811da5d5b4bc6d497ffa98491e38`.
+3. Nhìn vào độ dài của hash kèm file decompile `MessageDigest.getInstance("MD5")` từ M7, Hacker xác định đây là mã băm dạng MD5.
+4. Pentester copy chuỗi `482c811da5d5b4bc6d497ffa98491e38` ném lên các trang web như [CrackStation](https://crackstation.net/), kết quả sẽ trả về Plain-text mật khẩu bị lộ trong chỉ 1 giây do hệ thống MD5 rất yếu, có vô vàn bản Rainbow Table trên mạng và đặc biệt DEV đã KHÔNG dùng hệ thống thêm **Salt (Muối)** để chống lại dạng tấn công này.
