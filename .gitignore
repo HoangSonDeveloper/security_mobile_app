@@ -1,5 +1,5 @@
 *.iml
-.gradle
+QuickBusLite/.gradle
 /local.properties
 /.idea/caches
 /.idea/libraries
@@ -13,3 +13,6 @@
 .externalNativeBuild
 .cxx
 local.properties
+.gradle
+.kotlin
+.idea
