@@ -1,0 +1,34 @@
+{
+  "namespaces": {
+    "secure": "/api/secure",
+    "insecure": "/api/insecure"
+  },
+  "endpoints": [
+    "POST /auth/register",
+    "POST /auth/login",
+    "POST /auth/refresh",
+    "POST /auth/logout",
+    "POST /auth/change-password",
+    "GET /accounts",
+    "GET /accounts/:id",
+    "GET /accounts/:id/balance",
+    "GET /transactions",
+    "GET /transactions/:id",
+    "POST /transactions/transfer",
+    "POST /transactions/:id/receipt",
+    "GET /user/profile",
+    "PUT /user/profile",
+    "DELETE /user/data-export",
+    "DELETE /user/account"
+  ],
+  "seedUsers": [
+    {
+      "email": "alice@example.com",
+      "password": "Str0ng!Pass"
+    },
+    {
+      "email": "bob@example.com",
+      "password": "Banking!123"
+    }
+  ]
+}

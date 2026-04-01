@@ -1,0 +1,22 @@
+{
+  "name": "owasp-mobile-demo-suite",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "start:secure-backend": "npm --prefix secure-backend start",
+    "start:insecure-backend": "npm --prefix insecure-backend start",
+    "dev:secure-backend": "npm --prefix secure-backend run dev",
+    "dev:insecure-backend": "npm --prefix insecure-backend run dev",
+    "start:secure": "npm --prefix secure-app start",
+    "start:insecure": "npm --prefix insecure-app start",
+    "test:secure-backend": "npm --prefix secure-backend test",
+    "test:insecure-backend": "npm --prefix insecure-backend test",
+    "test:secure": "npm --prefix secure-app test",
+    "test:insecure": "npm --prefix insecure-app test",
+    "test": "npm run test:secure-backend && npm run test:insecure-backend && npm run test:secure && npm run test:insecure",
+    "seed:secure-backend": "npm --prefix secure-backend run seed",
+    "seed:insecure-backend": "npm --prefix insecure-backend run seed",
+    "reset:secure-backend": "npm --prefix secure-backend run reset",
+    "reset:insecure-backend": "npm --prefix insecure-backend run reset"
+  }
+}
